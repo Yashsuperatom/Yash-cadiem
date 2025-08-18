@@ -1,0 +1,26 @@
+[project]
+name = "rag-ai-agent"
+version = "0.1.0"
+description = "RAG AI Agent with Google Gemini and LangGraph"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.10",
+    "langchain-google-genai>=1.0.0",
+    "langgraph>=0.1.0",
+    "chromadb>=0.4.0",
+    "unstructured[all-docs]>=0.10.0",
+    "pypdf2>=3.0.0",
+    "python-docx>=0.8.11",
+    "python-pptx>=0.6.21",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "google-generativeai>=0.7.0",
+    "requests>=2.31.0",
+]
