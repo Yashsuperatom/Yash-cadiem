@@ -3,6 +3,14 @@ import json
 from typing import List, Dict, Any
 from Agent.Global_Agent import judge_agent, web_agent, llm_only_agent  # Existing agents
 from Agent.LocalFile_agent import local_search_agent  # Your local LLM agent
+# from agno.agent import Agent
+# from agno.models.openrouter import OpenRouter
+# from agno.storage.postgres import PostgresStorage
+# from config import database_url,openrouter_api_key
+# from Agent.web_Agent import web_agent
+# from Agent.base_llm import baseLLM
+# from Agent.LocalFile_agent import local_search_agent
+
 
 
 def extract_sources(answer_text: str) -> List[Dict[str, str]]:
@@ -90,3 +98,35 @@ Please evaluate all three answers and provide judgments and suggestions for impr
         "judgment": judgment_json.get("judgment", ""),
         "improvements": judgment_json.get("improvements", ""),
     }
+
+# store = PostgresStorage(
+#     table_name="judge_agent",
+#     db_url=database_url
+# )
+# # Instead of AgentGroup, run sub-agents manually
+# local_answer = local_search_agent.run("some query")
+# web_answer = web_agent.run("some query")
+# base_answer = baseLLM.run("some query")
+
+# candidates = f"""
+# Agent 1 (Local File Agent): {local_answer}
+
+# Agent 2 (Web Agent): {web_answer}
+
+# Agent 3 (Base LLM): {base_answer}
+# """
+
+# judge_agent = Agent(
+#     model=OpenRouter(id="gpt-5", api_key=openrouter_api_key),
+#     name="judge_agent",
+#     role="Answer Evaluator",
+#     instructions=[
+#         "You are the Judge Agent. Your job is to evaluate multiple candidate answers for a given user query and select the single best answer.",
+#         "Rules:",
+#         "1. Prefer the Local File Agent if it is relevant.",
+#         "2. Otherwise, select the most accurate, clear, and complete answer.",
+#         "Only return ONE final answer with a short justification."
+#     ],
+#     markdown=True,
+#     stream=True,
+# )

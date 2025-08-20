@@ -47,7 +47,6 @@
 #     print(res)
 
 # # test()
-
 from agno.agent import Agent
 from agno.models.openrouter import OpenRouter
 from config import openrouter_api_key, database_url
@@ -93,7 +92,7 @@ storage = PostgresStorage(table_name="agent_sessions", db_url=database_url)
 
 # Create the Agent passing your search function directly in tools list; no Tool() wrapper
 local_search_agent = Agent(
-    model=OpenRouter(id="gpt-4.1", api_key=openrouter_api_key),
+    model=OpenRouter(id="gpt-4o", api_key=openrouter_api_key),
     name="local_search_agent",
     role=(
         "You are an assistant that answers questions by searching a local file vector database. "
@@ -105,7 +104,8 @@ local_search_agent = Agent(
     ],
     markdown=False,
     storage=storage,
-    stream=True
+    stream=True,
+    add_datetime_to_instructions=True,
 )
 
 

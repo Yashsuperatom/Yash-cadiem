@@ -119,3 +119,105 @@ Please evaluate all three answers and provide suggestions for improvement in JSO
             yield f"data: {json.dumps({'type': 'judgment', 'content': content, 'sources': sources})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+# from fastapi import FastAPI
+# from fastapi.responses import StreamingResponse
+# from pydantic import BaseModel
+# from Agent.LocalFile_agent import local_search_agent
+# from agent_backend.Agent.Global_Agent import web_agent
+# from Agent.base_llm import baseLLM
+# from Agent.Judge_agent import judge_agent
+# import asyncio
+# import json
+# from langfuse_client import lf_client
+
+# app = FastAPI()
+
+# class QueryRequest(BaseModel):
+#     query: str
+
+# # --- helper functions ---
+# async def _async_iterate(agen):
+#     """Consume async generator into a queue for merging."""
+#     queue = asyncio.Queue()
+
+#     async def worker():
+#         async for item in agen:
+#             await queue.put(item)
+#         await queue.put(None)
+
+#     asyncio.create_task(worker())
+#     return queue
+
+
+# async def _merge_streams(queues):
+#     """Merge outputs from multiple async generators concurrently."""
+#     active = len(queues)
+#     while active:
+#         done, _ = await asyncio.wait(
+#             [q.get() for q in queues], return_when=asyncio.FIRST_COMPLETED
+#         )
+#         for task in done:
+#             item = task.result()
+#             if item is None:
+#                 active -= 1
+#             else:
+#                 yield item
+
+# # --- streaming wrapper for each agent ---
+# async def stream_output(name, agent, query, results: dict, trace):
+#     """Stream agent output and store final result, tracked in Langfuse."""
+#     collected = []
+
+#     # Start Langfuse span for this agent
+#     span = trace.span(name=f"{name}-agent")
+
+#     async for chunk in agent.stream(query):
+#         collected.append(chunk)
+#         # Log each chunk to Langfuse
+#         span.log_event("chunk", chunk)
+#         yield f"data: {json.dumps({'agent': name, 'text': chunk})}\n\n"
+
+#     final_answer = "".join(collected)
+#     results[name] = final_answer
+#     # End agent span with final output
+#     span.end(output=final_answer)
+#     yield f"data: {json.dumps({'agent': name, 'done': True})}\n\n"
+
+# # --- main streaming route ---
+# @app.post("/query/judge")
+# async def query_stream(request: QueryRequest):
+#     user_query = request.query
+#     results = {}
+
+#     # Start a Langfuse trace for the full pipeline
+#     trace = lf_client.trace(name="judge-pipeline", user_id="user-123")
+
+#     async def event_generator():
+#         # Start streaming all 3 agents
+#         tasks = [
+#             stream_output("Local", local_search_agent, user_query, results, trace),
+#             stream_output("Web", web_agent, user_query, results, trace),
+#             stream_output("BaseLLM", baseLLM, user_query, results, trace),
+#         ]
+
+#         # Merge streams concurrently
+#         agents_done = asyncio.as_completed([_async_iterate(t) for t in tasks])
+#         async for chunk in _merge_streams(agents_done):
+#             yield chunk
+
+#         # After all agents finish, run Judge agent
+#         judge_span = trace.span(name="judge")
+#         judge_answer = await judge_agent.run({
+#             "user_query": user_query,
+#             "candidates": results
+#         })
+#         judge_span.end(output=judge_answer)
+
+#         # End the full pipeline trace
+#         trace.end()
+
+#         # Yield Judge answer to frontend
+#         yield f"data: {json.dumps({'agent': 'Judge', 'text': judge_answer, 'done': True})}\n\n"
+
+#     return StreamingResponse(event_generator(), media_type="text/event-stream")
+

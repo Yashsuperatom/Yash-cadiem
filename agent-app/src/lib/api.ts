@@ -1,4 +1,4 @@
-// lib/api.ts
+
 
 export interface JudgeStreamEvent {
   type: "answer1" | "answer2" | "answer3" | "judgment";
@@ -55,3 +55,48 @@ export async function fetchJudgmentStream(
     buffer = parts[parts.length - 1];
   }
 }
+
+// import { JudgeStreamEvent } from "./types";
+
+// const backendUrl = import.meta.env.VITE_BACKEND_URL;
+// export async function fetchJudgmentStream(
+//   message:string,
+//   onEvent:(event:JudgeStreamEvent)=>void
+// ) : Promise<void>{
+//   const response = await fetch(`${backendUrl}/app/judge/stream`,{
+//     method:'post',
+//     headers:{"Content-Type":"application/json"},
+//     body:JSON.stringify({message}),
+//   });
+
+//   if(!response.body){
+//  throw new Error("ReadableStream not supported or no response body");
+//   }
+
+//   const reader = response.body.getReader();
+//   const decoder = new TextDecoder("utf-8");
+//   let buffer = "";
+
+//   while (true) {
+//     const { value, done } = await reader.read();
+//     if (done) break;
+
+// buffer += decoder.decode(value, { stream: true });
+//     const parts = buffer.split("\n\n");
+
+//     for (let i = 0; i < parts.length - 1; i++) {
+//       const eventStr = parts[i];
+//       if (eventStr.startsWith("data: ")) {
+//         const jsonStr = eventStr.slice(6).trim();
+//         try {
+//           const eventObj = JSON.parse(jsonStr);
+//           onEvent(eventObj);
+//         } catch (e) {
+//           console.error("Failed to parse SSE JSON:", e);
+//         }
+//       }
+//     }
+
+//     buffer = parts[parts.length - 1];
+//   }
+// }

@@ -20,3 +20,9 @@ export interface Judgment {
   sources?: { title: string; url: string }[]; // URLs for the answer
 }
 
+export interface JudgeStreamEvent{
+  type:"answer1"|"answer2"|"answer3"|"judgment";
+  content:string;
+  source?:{title:string;url:string}[];
+}
+
