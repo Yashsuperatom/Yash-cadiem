@@ -1,0 +1,63 @@
+Metadata-Version: 2.4
+Name: local-agent
+Version: 0.2.1
+Summary: Local RAG agent with FastAPI, LangGraph, SQLite, Chroma
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.111
+Requires-Dist: aiosqlite>=0.20
+Requires-Dist: uvicorn>=0.30
+Requires-Dist: pydantic>=2.7
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: chromadb>=0.5
+Requires-Dist: tiktoken>=0.7
+Requires-Dist: langgraph>=0.2
+Requires-Dist: langgraph-cli[inmem]>=0.1.55
+Requires-Dist: langchain-core>=0.2
+Requires-Dist: httpx>=0.27
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: openai>=1.35
+Requires-Dist: requests>=2.32.4
+Requires-Dist: pypdf>=4.2
+Requires-Dist: python-docx>=1.1
+Requires-Dist: python-pptx>=0.6.23
+Requires-Dist: langgraph-checkpoint-sqlite>=2.0.11
+Requires-Dist: beautifulsoup4>=4.12
+Requires-Dist: lxml>=5.2
+
+# Local Agent (FastAPI + LangGraph + SQLite + Chroma) — with SQLite User & Query Logging
+
+This project logs **who searched what and when** and **what response they received** into **SQLite only**.
+
+## What is logged
+- Table `users`: user id/email (add more fields as needed)
+- Table `queries`: one row per search (user_id, qtext, top_k, created_at, latency_ms, response_json)
+- Table `query_hits`: rows for top-k hits (rank, path, score, snippet, etc.)
+
+## Quickstart
+1. Install uv (https://docs.astral.sh/uv/)
+2. Configure env:
+```bash
+cp .env.example .env
+# put a real OPENAI_API_KEY and set INDEX_ROOTS, e.g. INDEX_ROOTS=["./"]
+```
+3. Install & run:
+```bash
+uv pip install -e .
+uv run uvicorn agent_app.main:app --host 0.0.0.0 --port 8000 --reload
+# API docs: http://127.0.0.1:8000/docs
+```
+4. Studio:
+```bash
+uv run langgraph dev
+# Studio opens at the URL printed in the console
+```
+
+## Endpoints
+- `POST /index-full` — full rebuild (uses `.env` INDEX_ROOTS if request roots omitted)
+- `POST /index` — incremental indexing
+- `POST /search` — runs query, **logs to SQLite**, returns hits and `query_id`
+- `GET /users/{user_id}/queries` — list recent queries for a user
+- `GET /queries/{query_id}` — inspect a past query and its hits
+
+SQLite DB at `./data/app.sqlite` (WAL mode). Chroma persistence at `./data/chroma`.
