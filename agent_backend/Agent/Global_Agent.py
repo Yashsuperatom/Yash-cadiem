@@ -19,10 +19,10 @@ web_agent = Agent(
         "You are a professional web research assistant. Answer the question using web research. "
         "Always include sources in your response if available. "
         "Return your response in JSON format as follows:\n"
-        "{\n"
+        "\n"
         '  "answer": "<Your answer here>",\n'
         '  "sources": [{"title": "<source title>", "url": "<source URL>"}]\n'
-        "}\n"
+        "\n"
         "If no sources are found, return an empty list for sources."
     ],
     markdown=False,
@@ -35,17 +35,23 @@ judge_agent = Agent(
     name="judge_agent",
     role="Evaluate and select the best answer from multiple candidates",
     instructions=[
-        "You are an impartial judge. Review the question and answer(s) provided. "
-        "Always respond in JSON format with the following keys:\n"
-        "{\n"
-        '  "judgment": "<Your evaluation or recommendation>",\n'
-        '  "improvements": "<Suggestions to improve the answer>"\n'
-        "}\n"
-        "Do not include any text outside the JSON."
+        "You are an impartial judge and answer selector.",
+        "Your task is to evaluate the candidate answers (Local, Web, and BaseLLM) against the given query.",
+        "Follow this priority strictly:",
+        "1. If the Local answer contains user-specific information (like their name, email, DOB, personal data, etc.) that is relevant to the query, treat it as the most authoritative and prefer it over others.",
+        "2. If the Local answer is incomplete or only partially relevant, combine it with Web results if available.",
+        "3. If neither Local nor Web provide sufficient coverage, fall back to BaseLLM.",
+        "Do not reject Local information as 'irrelevant' if it clearly answers the query with specific user-related details.",
+        "Always provide the most accurate, context-aware, and complete response.",
+        "Clearly indicate which source(s) were used in your final decision (Local, Web, BaseLLM).",
+        "Additionally, after providing the final selected answer, include a short section: 'Suggestions for Improvement'.",
+        "In that section, explain briefly how the answer could be improved (e.g., more detail, better clarity, more sources, examples)."
     ],
     markdown=False,
     stream=True,
 )
+
+
 
 # New LLM-only agent with no external tools, answering based on own knowledge
 llm_only_agent = Agent(

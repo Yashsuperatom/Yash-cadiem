@@ -1,113 +1,103 @@
-# import requests
-# import urllib.parse
- 
-# def query_rag(question, base_url="http://172.16.4.175:8000/api/v1/rag/query"):
-#     try:
-#         # Encode the question to be safe for URLs
-#         encoded_question = urllib.parse.quote(question)
- 
-#         # Build the full URL
-#         url = f"{base_url}?query={encoded_question}"
- 
-#         # Make the request
-#         response = requests.get(url)
-#         response.raise_for_status()
- 
-#         data = response.json()
-#         results = data.get("results", [])[:2]  # First 2 only
- 
-#         # Combine content + metadata
-#         combined = []
-#         for idx, item in enumerate(results, start=1):
-#             content = item.get("content", "").strip()
-#             meta = item.get("metadata", {})
-#             file_name = meta.get("file_name", "N/A")
-#             page = meta.get("page", "N/A")
-#             score = item.get("similarity_score", "N/A")
- 
-#             combined.append(
-#                 f"--- Result {idx} ---\n"
-#                 f"File: {file_name}\n"
-#                 f"Page: {page}\n"
-#                 f"Similarity: {score:.4f}\n"
-#                 f"Content:\n{content}\n"
-#             )
- 
-#         return "\n".join(combined)
- 
-#     except requests.exceptions.RequestException as e:
-#         return f"Error fetching data: {e}"
-#     except ValueError:
-#         return "Error parsing JSON response"
-
-
-
-# def test():
-#     res = query_rag("Marshal")
-#     print(res)
-
-# # test()
-
 from agno.agent import Agent
 from agno.models.openrouter import OpenRouter
-from config import openrouter_api_key, database_url
+from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.storage.postgres import PostgresStorage
-import requests
-import urllib.parse
+from config import openrouter_api_key, database_url
 
-# Your query_rag function, unchanged
-def query_rag(question: str) -> str:
-    base_url = "http://172.16.4.175:8001/api/v1/rag/query"
+import httpx
+import os
+import re
+
+# ---------------- RAG tool ----------------
+
+async def query_rag(question: str) -> str:
+    base_url = "http://127.0.0.1:8000/api/v1/file/search"  # routable host
     try:
-        encoded_question = urllib.parse.quote(question)
-        url = f"{base_url}?query={encoded_question}"
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        results = data.get("results", [])[:2]
-
-        combined = []
-        for idx, item in enumerate(results, start=1):
-            content = item.get("content", "").strip()
-            meta = item.get("metadata", {})
-            file_name = meta.get("file_name", "N/A")
-            page = meta.get("page", "N/A")
-            score = item.get("similarity_score", "N/A")
-
-            combined.append(
-                f"--- Result {idx} ---\n"
-                f"File: {file_name}\n"
-                f"Page: {page}\n"
-                f"Similarity: {score:.4f}\n"
-                f"Content:\n{content}\n"
+        url = f"{base_url}?user_id=demo"  # backend expects user_id in query
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                url,
+                json={"query": question, "top_k": 5, "filters": None},  # backend expects JSON body
             )
-        return "\n".join(combined)
-    except requests.exceptions.RequestException as e:
+            resp.raise_for_status()
+            data = resp.json()
+
+        hits = data.get("hits") or []
+        if not hits:
+            return "no_answer"
+
+        # Sort by score desc when available, keep top 5
+        def _score(x):
+            s = x.get("score")
+            try:
+                return float(s)
+            except Exception:
+                return -1e9
+        hits = sorted(hits, key=_score, reverse=True)[:5]
+
+        texts, sources = [], []
+        for h in hits:
+            t = (h.get("text") or h.get("content") or "").strip()
+            if t:
+                texts.append(t)
+            meta = h.get("meta") or h.get("metadata") or {}
+            file_name = os.path.basename(meta.get("path", "")) or meta.get("file_name", "N/A")
+            page = meta.get("chunk_idx", meta.get("page", "N/A"))
+            sources.append(f"- {file_name} ({page})")
+
+        # Generic extractive summary (no query heuristics)
+        raw = " ".join(texts)
+        raw = re.sub(r"\s+", " ", raw).strip()
+        # sentence split
+        sents = re.split(r"(?<=[.!?])\s+", raw) if raw else []
+        seen, picked, total_chars = set(), [], 0
+        MAX_SENTS, MAX_CHARS = 6, 900
+        for s in sents:
+            s = s.strip()
+            if not s:
+                continue
+            k = re.sub(r"\s+", " ", s).lower()
+            if k in seen:
+                continue
+            if total_chars + len(s) + (1 if picked else 0) > MAX_CHARS:
+                break
+            seen.add(k)
+            picked.append(s)
+            total_chars += len(s) + (1 if picked else 0)
+            if len(picked) >= MAX_SENTS:
+                break
+
+        answer = " ".join(picked).strip() if picked else (raw[:MAX_CHARS] if raw else "")
+        if not answer:
+            return "no_answer"
+
+        return f"Answer: {answer}\nSources:\n" + "\n".join(sources[:3])
+
+    except httpx.RequestError as e:
         return f"Error fetching data: {e}"
-    except ValueError:
-        return "Error parsing JSON response"
+    except Exception as e:
+        return f"Error: {e}"
 
+# ---------------- Storage ----------------
 
-# Setup storage (reuse your config)
 storage = PostgresStorage(table_name="agent_sessions", db_url=database_url)
-
-# Create the Agent passing your search function directly in tools list; no Tool() wrapper
+# --- agent that MUST use the tool and echo extractive output ---
 local_search_agent = Agent(
     model=OpenRouter(id="gpt-4.1", api_key=openrouter_api_key),
     name="local_search_agent",
     role=(
-        "You are an assistant that answers questions by searching a local file vector database. "
-        "Use the provided search tool to fetch relevant excerpts and generate a helpful summary answer."
+        "Always call query_rag(<user_question>) first. "
+        "If the tool returns 'no_answer', output exactly 'no_answer'. "
+        "Otherwise, return the tool output verbatim without extra text."
     ),
-    tools=[query_rag],  # <- pass function directly here (not wrapped in Tool)
+    tools=[query_rag],
     instructions=[
-        "First use the local_file_search tool to get relevant content, then answer based on that content."
+        "Call query_rag with the raw user question.",
+        "Return its output exactly (it already contains 'Answer:' and 'Sources:').",
+        "If it returns 'no_answer', output 'no_answer'."
     ],
     markdown=False,
     storage=storage,
-    stream=True
+    stream=True,
+    add_datetime_to_instructions=True,
 )
-
-
-
-

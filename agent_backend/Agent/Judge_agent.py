@@ -19,7 +19,7 @@ async def get_answer_and_judgment(question: str) -> Dict[str, Any]:
     """
     1. Get answer from web_agent
     2. Get answer from llm_only_agent
-    3. Get answer from local_file_agent (new)
+    3. Get answer from local_file_agent 
     4. Extract sources
     5. Clean main answer texts
     6. Query judge_agent for evaluation
