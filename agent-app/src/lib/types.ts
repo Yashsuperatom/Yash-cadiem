@@ -1,18 +1,34 @@
 
 export interface Source {
-    title: string;
-    url: string;
+  title: string;
+  url: string;
+}
+// --- Types for streaming API ---
+export interface JudgeStreamEvent {
+  type: "answer1" | "answer2" | "answer3" | "judgment" | 
+        "answer1_start" | "answer2_start" | "answer3_start" | "judgment_start" |
+        "answer1_complete" | "answer2_complete" | "answer3_complete" | "complete";
+  content: string;
+  sources?: { title: string; url: string }[];
 }
 
+
 export interface Message {
-    id: string;
-    type: "user" | "assistant";
-    content: string;
-    judgment?: string;
-    sources?: Source[];
+
+    sources?: any;
     source_used?:string;
-    suggestions ?:string;
     explanation?:string;
+     id: string;
+  type: "user" | "assistant";
+  content: string;
+  answer1?: string;
+  answer2?: string;
+  answer3?: string;
+  judgment?: string;
+  sources1?: Source[];
+  sources2?: Source[];
+  sources3?: Source[];
+  suggestions?: string;
   }
   
   export interface Judgment {
@@ -41,9 +57,3 @@ export interface Message {
 }
 
 
-// --- Types for streaming API ---
-export interface JudgeStreamEvent {
-    type: "answer1" | "answer2" | "answer3" | "judgment";
-    content: string;
-    sources?: { title: string; url: string }[];
-}

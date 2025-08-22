@@ -3,25 +3,24 @@
 import { useState, useRef, useEffect } from "react";
 import {Message,JudgeStreamEvent} from "@/lib/types";
 import { fetchJudgmentStream } from "@/lib/api";
+import { marked } from 'marked';
 
-
-/**
- * A cancellable fetch function for streaming responses.
- * It returns a cancel function to be called by the parent component.
- */
+// Define Source type if not imported
+type Source = {
+    title: string;
+    url?: string;
+};
 
 // Simple function to convert basic markdown to HTML
 const markdownToHtml = (markdown: string) => {
-    // Replace bold text (e.g., **text**)
-    let html = markdown.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Replace italic text (e.g., *text*)
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    // Replace links (e.g., [text](url))
-    html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-400 transition-colors duration-200">$1</a>');
-    // Replace newline characters with <br> for line breaks
-    html = html.replace(/\n/g, '<br />');
-
-    return { __html: html };
+  // Configure marked options
+  marked.setOptions({
+    breaks: true, // Convert \n to <br>
+    gfm: true,    // GitHub flavored markdown
+  });
+  
+  const html = marked(markdown);
+  return { __html: html };
 };
 
 // --- Custom Hook for Chat Logic ---
@@ -75,60 +74,100 @@ function useChat() {
             id: generateId(),
             type: "assistant",
             content: "",
-            sources: [],
+            answer1: "",
+            answer2: "",
+            answer3: "",
             judgment: "",
+            sources: [],
+            sources1: [],
+            sources2: [],
+            sources3: [],
         };
+
         setStreamingMessage(newStreamingMessage);
 
-        const messageBuilder = { ...newStreamingMessage };
-
         const onEvent = (event: JudgeStreamEvent) => {
-            // Update the agent based on the incoming event type
-            if (event.type === "answer1") setCurrentAgent("Global Contex Agent");
-            else if (event.type === "answer2") setCurrentAgent("Base LLM Knowledge Agent");
-            else if (event.type === "answer3") setCurrentAgent("Local File Agent");
-            else if (event.type === "judgment") setCurrentAgent("Main Agent");
-
             setStreamingMessage(prev => {
                 if (!prev) return null;
+
                 const updatedMessage = { ...prev };
-                if (event.type === "answer1" || event.type === "answer2" || event.type === "answer3") {
-                    updatedMessage.content += event.content;
-                    messageBuilder.content = updatedMessage.content;
-                    if (event.sources) {
-                        updatedMessage.sources = [...(updatedMessage.sources || []), ...event.sources];
-                        messageBuilder.sources = updatedMessage.sources;
-                    }
-                } else if (event.type === "judgment") {
-                    updatedMessage.judgment += event.content;
-                    messageBuilder.judgment = updatedMessage.judgment;
-                    if (event.sources) {
-                        updatedMessage.sources = [...(updatedMessage.sources || []), ...event.sources];
-                        messageBuilder.sources = updatedMessage.sources;
-                    }
+
+                switch (event.type) {
+                    case "answer1_start":
+                        setCurrentAgent("Global Context Agent");
+                        break;
+                    case "answer1":
+                        updatedMessage.answer1 = (updatedMessage.answer1 || "") + event.content;
+                        break;
+                    case "answer1_complete":
+                        updatedMessage.sources1 = event.sources || [];
+                        break;
+                    case "answer2_start":
+                        setCurrentAgent("Base LLM Knowledge Agent");
+                        break;
+                    case "answer2":
+                        updatedMessage.answer2 = (updatedMessage.answer2 || "") + event.content;
+                        break;
+                    case "answer2_complete":
+                        updatedMessage.sources2 = event.sources || [];
+                        break;
+                    case "answer3_start":
+                        setCurrentAgent("Local File Agent");
+                        break;
+                    case "answer3":
+                        updatedMessage.answer3 = (updatedMessage.answer3 || "") + event.content;
+                        break;
+                    case "answer3_complete":
+                        updatedMessage.sources3 = event.sources || [];
+                        break;
+                    case "judgment_start":
+                        setCurrentAgent("Final Response");
+                        break;
+                    case "judgment":
+                        updatedMessage.judgment = (updatedMessage.judgment || "") + event.content;
+                        break;
+                    case "complete":
+                        // Stream completed - move streaming message to messages array
+                        setMessages(prev => [...prev, updatedMessage]);
+                        setIsLoading(false);
+                        setCurrentAgent(null);
+                        setStreamingMessage(null); // Clear streaming message
+                        return null; // Return null to clear the streaming message state
                 }
+
                 return updatedMessage;
             });
         };
 
         try {
             const cancel = await fetchJudgmentStream(messageContent, onEvent, () => {
+                // On cancel, save what we have if there's any content
+                setStreamingMessage(current => {
+                    if (current && (current.answer1 || current.answer2 || current.answer3 || current.judgment)) {
+                        setMessages(prev => [...prev, current]);
+                    }
+                    setStreamingMessage(null); // Clear streaming message
+                    return null;
+                });
                 setIsLoading(false);
-                setStreamingMessage(null);
                 setCurrentAgent(null);
             });
+
             cancelStreamRef.current = cancel;
 
-            // --- ADDED MOCK JUDGMENT HERE ---
-            // messageBuilder.judgment = "This is a mock judgment to show the feature works. The answer could be improved by adding more details about the streaming protocol.";
-            // The stream has ended successfully, add the full message
-            setMessages(prev => [...prev, messageBuilder]);
         } catch (err) {
             console.error(err);
             setError("Error: Could not fetch streaming response. Please try again.");
-        } finally {
+            
+            // On error, save partial results if any
+            setStreamingMessage(current => {
+                if (current && (current.answer1 || current.answer2 || current.answer3 || current.judgment)) {
+                    setMessages(prev => [...prev, current]);
+                }
+                setStreamingMessage(null); // Clear streaming message
+                return null;
+            });
             setIsLoading(false);
-            setStreamingMessage(null);
             setCurrentAgent(null);
         }
     };
@@ -148,59 +187,98 @@ function useChat() {
 
 // --- MessageBubble Component for cleaner rendering ---
 const MessageBubble = ({ msg }: { msg: Message }) => {
-    const isUser = msg.type === "user";
+  const isUser = msg.type === "user";
+  
+  const renderSources = (sources: Source[] | undefined) => {
+    if (!sources || sources.length === 0) return null;
+    
     return (
-        <div
-            className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'} animate-fadeIn`}
-        >
-            <div
-                className={`max-w-3xl p-4 rounded-xl shadow-md break-words transition-transform duration-300 ease-in-out transform ${isUser
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200 text-gray-800"
-                    }`}
-            >
-                {isUser ? (
-                    <div>{msg.content}</div>
-                ) : (
-                    <div className="flex flex-col gap-3">
-                        {/* Main answer */}
-                        {msg.content && (
-                            <div className="whitespace-pre-wrap">
-                                <span dangerouslySetInnerHTML={markdownToHtml(msg.content)} />
-                            </div>
-                        )}
-                        {/* Judgment/improvements */}
-                        {msg.judgment && (
-                            <div className="bg-gray-100 p-3 rounded-lg border-l-4 border-yellow-500">
-                                <strong className="text-yellow-600">Final Response</strong>
-                                <p className="mt-1 whitespace-pre-wrap">{msg.judgment}</p>
-                            </div>
-                        )}
-                        {/* Sources */}
-                        {msg.sources && msg.sources.length > 0 && (
-                            <div className="text-sm">
-                                <strong className="text-gray-600">Sources:</strong>
-                                <ul className="list-disc list-inside mt-1">
-                                    {msg.sources.map((s, i) => (
-                                        <li key={i}>
-                                            <a
-                                                href={s.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="underline text-blue-600 hover:text-blue-400 transition-colors duration-200"
-                                            >
-                                                {s.title}
-                                            </a>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
+      <div className="mt-3 pt-3 border-t border-gray-200">
+        <h4 className="font-semibold text-sm text-gray-600 mb-2">Sources:</h4>
+        <ul className="space-y-1">
+          {sources.map((source, i) => (
+            <li key={i}>
+              {source.url && source.url !== "#" ? (
+                <a 
+                  href={source.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline text-sm"
+                >
+                  {source.title}
+                </a>
+              ) : (
+                <span className="text-gray-600 text-sm">{source.title}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
     );
+  };
+
+  return (
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
+      <div className={`max-w-[80%] p-4 rounded-lg ${
+        isUser 
+          ? "bg-blue-500 text-white" 
+          : "bg-white border border-gray-200 shadow-sm"
+      }`}>
+        {isUser ? (
+          <div>{msg.content}</div>
+        ) : (
+          <div className="space-y-4">
+            {/* Answer 1 */}
+            {msg.answer1 && (
+              <div>
+                <h3 className="font-semibold text-blue-600 mb-2">Global Context Agent:</h3>
+                <div 
+                  className="prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={markdownToHtml(msg.answer1)} 
+                />
+                {renderSources(msg.sources1)}
+              </div>
+            )}
+            
+            {/* Answer 2 */}
+            {msg.answer2 && (
+              <div>
+                <h3 className="font-semibold text-green-600 mb-2">Base LLM Knowledge Agent:</h3>
+                <div 
+                  className="prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={markdownToHtml(msg.answer2)} 
+                />
+                {renderSources(msg.sources2)}
+              </div>
+            )}
+            
+            {/* Answer 3 */}
+            {msg.answer3 && (
+              <div>
+                <h3 className="font-semibold text-purple-600 mb-2">Local File Agent:</h3>
+                <div 
+                  className="prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={markdownToHtml(msg.answer3)} 
+                />
+                {renderSources(msg.sources3)}
+              </div>
+            )}
+            
+            {/* Final Judgment */}
+            {msg.judgment && (
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="font-semibold text-orange-600 mb-2">Final Response:</h3>
+                <div 
+                  className="prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={markdownToHtml(msg.judgment)} 
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 // --- Header Component ---

@@ -13,11 +13,11 @@ import re
 async def query_rag(question: str) -> str:
     base_url = "http://127.0.0.1:8000/api/v1/file/search"  # routable host
     try:
-        url = f"{base_url}?user_id=demo"  # backend expects user_id in query
+        url = f"{base_url} " # backend expects user_id in query
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 url,
-                json={"query": question, "top_k": 5, "filters": None},  # backend expects JSON body
+                json={ "user_id":"demo", "query": question, "top_k": 5, "filters": None},  # backend expects JSON body
             )
             resp.raise_for_status()
             data = resp.json()
@@ -86,15 +86,15 @@ local_search_agent = Agent(
     model=OpenRouter(id="gpt-4.1", api_key=openrouter_api_key),
     name="local_search_agent",
     role=(
-        "Always call query_rag(<user_question>) first. "
-        "If the tool returns 'no_answer', output exactly 'no_answer'. "
-        "Otherwise, return the tool output verbatim without extra text."
+        "You are an assistant that answers *only* if the information from local documents is clearly "
+        "relevant to the user’s question. "
+        "If the retrieved information does not answer the question or is not related, respond exactly with 'no_answer'."
     ),
     tools=[query_rag],
     instructions=[
         "Call query_rag with the raw user question.",
-        "Return its output exactly (it already contains 'Answer:' and 'Sources:').",
-        "If it returns 'no_answer', output 'no_answer'."
+        "If the tool returns 'no_answer', output 'no_answer'.",
+        "Otherwise, return the tool output verbatim only if it is directly relevant to the question."
     ],
     markdown=False,
     storage=storage,
